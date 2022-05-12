@@ -62,7 +62,7 @@ Subsequently, you can call the `Get()` method of this `Storage` to get an overwr
 Get(name string) Value
 ```
 
-Once you got a `Value`, take advantage of the provided helper methods to implement the overwriting behavior cleanly.
+Once you got a `Value`, take advantage of the provided helper methods and functions to implement the overwriting behavior cleanly.
 
 ```go
 // Value wraps a raw interface{} value
@@ -81,7 +81,7 @@ type Value interface {
     // NOTE: JSON by default unmarshal to numbers which are treated as float.
     // Using this method, your float will lose precision as an int64.
     AsInt() int64
-    // Unmarshal into the given type. t should be a pointer to a struct.
-    Unmarshal(t interface{}) error
 }
+
+func Unmarshal[T any](v Value) (*T, error)
 ```
