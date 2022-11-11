@@ -20,13 +20,22 @@ At the beginning of your API handling logic, you must initialize a cache using t
 // cache that will automatically get garbage-collected at the end of
 // an API request when the context itself is garbage-collected.
 //
+// WithCache must be called near the start of an API request handling
+// before being any memoized functions get executed in child goroutines.
+//
+// The given context will be used as the root context of this cache. If
+// it gets cancelled, all pending memoized executions will be abandoned.
+// On the other hand, the context given to Execute won't affect pending
+// executions. Child goroutines can cancel the context given to Execute
+// to stop waiting for the result from the memoized function, which will
+// still proceed till completion.
+//
 // Note: the return DestroyFn must be deferred to minimize memory leaks.
 func WithCache(ctx context.Context) (context.Context, DestroyFn)
 ```
 
 Subsequently, you can pass the context you got back from the above function down to lower-level code. Whenever there's
 a need to memoize function calls, you just need to execute those functions using the provided function below.
-
 
 ```go
 // Execute guarantees that the given memoizedFn will be invoked only
@@ -38,10 +47,15 @@ a need to memoize function calls, you just need to execute those functions using
 // initialized using WithCache before calling Execute. The last return
 // value indicates whether this function call was memoized or not.
 //
-// Note 2: The provided key must be comparable and should not be of type
+// Note 2: the provided key must be comparable and should not be of type
 // string or any other built-in type to avoid collisions between packages
 // using this context. Callers of Execute should define their own types
-// for keys.
+// for keys similar to the best practices for using context.WithValue.
+//
+// Note 3: cancelling the given context allows caller to stop waiting
+// for the result from the memoizedFn. However, the memoizedFn will
+// still proceed till completion unless the root context given to
+// WithCache was cancelled.
 func Execute(
 	ctx context.Context,
 	executionKey interface{},
