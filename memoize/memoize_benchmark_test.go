@@ -9,7 +9,7 @@ import (
 
 func BenchmarkPromise_Get(b *testing.B) {
 	p := newPromise(
-		"debug", context.Background(), func(context.Context) (interface{}, error) {
+		"executionKeyType", context.Background(), func(context.Context) (interface{}, error) {
 			return "res", assert.AnError
 		},
 	)
@@ -38,7 +38,7 @@ func BenchmarkStore_Get(b *testing.B) {
 		go func() {
 			defer wg.Done()
 
-			p := c.promise(
+			p, _ := c.promise(
 				"key", func(context.Context) (interface{}, error) {
 					return "res", assert.AnError
 				},

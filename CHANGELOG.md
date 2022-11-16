@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.3] - 2022-11-16
+- Update memoize method signature to return more information with fewer outputs.
+- Added a feature to pre-populate the cache for request-level memoization.
+- Added a feature to find all memoized outcomes related to a particular execution key type.
+- Added a feature to detect cyclic execution.
+
 ## [1.0.2] - 2022-11-11
 - Use delegating context instead of detached context for memoization.
 

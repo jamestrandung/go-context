@@ -33,10 +33,11 @@ func TestNoMemoizeCache_Execute(t *testing.T) {
 					go func() {
 						defer wg.Done()
 
-						result, err, isMemoized := c.execute(context.Background(), nil, memoizedFn)
-						assert.Equal(t, 1, result)
-						assert.Equal(t, assert.AnError, err)
-						assert.False(t, isMemoized)
+						outcome, extra := c.execute(context.Background(), nil, memoizedFn)
+						assert.Equal(t, 1, outcome.Value)
+						assert.Equal(t, assert.AnError, outcome.Err)
+						assert.False(t, extra.IsMemoized)
+						assert.True(t, extra.IsExecuted)
 					}()
 				}
 
@@ -59,10 +60,11 @@ func TestNoMemoizeCache_Execute(t *testing.T) {
 					go func() {
 						defer wg.Done()
 
-						result, err, isMemoized := c.execute(context.Background(), "executionKey", nil)
-						assert.Equal(t, nil, result)
-						assert.Equal(t, ErrMemoizedFnCannotBeNil, err)
-						assert.False(t, isMemoized)
+						outcome, extra := c.execute(context.Background(), "executionKey", nil)
+						assert.Equal(t, nil, outcome.Value)
+						assert.Equal(t, ErrMemoizedFnCannotBeNil, outcome.Err)
+						assert.False(t, extra.IsMemoized)
+						assert.False(t, extra.IsExecuted)
 					}()
 				}
 
@@ -90,10 +92,11 @@ func TestNoMemoizeCache_Execute(t *testing.T) {
 					go func() {
 						defer wg.Done()
 
-						result, err, isMemoized := c.execute(context.Background(), "executionKey", memoizedFn)
-						assert.Equal(t, 1, result)
-						assert.Equal(t, assert.AnError, err)
-						assert.False(t, isMemoized)
+						outcome, extra := c.execute(context.Background(), "executionKey", memoizedFn)
+						assert.Equal(t, 1, outcome.Value)
+						assert.Equal(t, assert.AnError, outcome.Err)
+						assert.False(t, extra.IsMemoized)
+						assert.True(t, extra.IsExecuted)
 					}()
 				}
 
@@ -113,10 +116,11 @@ func TestNoMemoizeCache_Execute(t *testing.T) {
 
 				assert.NotPanics(
 					t, func() {
-						result, err, isMemoized := c.execute(context.Background(), "executionKey", memoizedFn)
-						assert.Equal(t, nil, result)
-						assert.True(t, errors.Is(err, ErrPanicExecutingMemoizedFn))
-						assert.False(t, isMemoized)
+						outcome, extra := c.execute(context.Background(), "executionKey", memoizedFn)
+						assert.Equal(t, nil, outcome.Value)
+						assert.True(t, errors.Is(outcome.Err, ErrPanicExecutingMemoizedFn))
+						assert.False(t, extra.IsMemoized)
+						assert.True(t, extra.IsExecuted)
 					},
 				)
 			},

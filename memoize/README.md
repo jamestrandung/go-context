@@ -34,6 +34,19 @@ At the beginning of your API handling logic, you must initialize a cache using t
 func WithCache(ctx context.Context) (context.Context, DestroyFn)
 ```
 
+After that, depending on your implementation, you can optionally pre-populate the memoize cache using the function below.
+
+```go
+// PopulateCache will put the given entries into this cache. The key
+// of such entries should be the executionKey that would be used to
+// call execute. The value should be the Outcome that you want to map
+// to this executionKey.
+//
+// Note: the given entries can only be populated in the cache if the
+// input context has been initialized using WithCache.
+func PopulateCache(ctx context.Context, entries map[interface{}]Outcome)
+```
+
 Subsequently, you can pass the context you got back from the above function down to lower-level code. Whenever there's
 a need to memoize function calls, you just need to execute those functions using the provided function below.
 
@@ -44,8 +57,7 @@ a need to memoize function calls, you just need to execute those functions using
 // the result of this call.
 //
 // Note 1: this promise can only be kept if the given context has been
-// initialized using WithCache before calling Execute. The last return
-// value indicates whether this function call was memoized or not.
+// initialized using WithCache before calling Execute.
 //
 // Note 2: the provided key must be comparable and should not be of type
 // string or any other built-in type to avoid collisions between packages
@@ -57,8 +69,23 @@ a need to memoize function calls, you just need to execute those functions using
 // still proceed till completion unless the root context given to
 // WithCache was cancelled.
 func Execute(
-	ctx context.Context,
-	executionKey interface{},
-	memoizedFn func(context.Context) (interface{}, error),
-) (result interface{}, err error, isMemoized bool)
+    ctx context.Context,
+    executionKey interface{},
+    memoizedFn func(context.Context) (interface{}, error),
+) (Outcome, Extra)
+```
+
+Toward the end of your implementation, if there's a need to find all memoized outcomes related to a particular execution
+key type (e.g. to put them in Redis so that they can be used to pre-populate the cache for subsequent requests), you can
+take advantage of the `FindOutcomes` function.
+
+```go
+// FindOutcomes returns all Outcome that were memoized under the given
+// executionKey type at the time findOutcomes was called. If a promise
+// related to this executionKey type is still pending, the function
+// will block and wait for it to complete to get its Outcome.
+//
+// Note: this function can only return all memoized Outcome if the given
+// context has been initialized using WithCache.
+func FindOutcomes(ctx context.Context, executionKey interface{}) map[interface{}]Outcome
 ```

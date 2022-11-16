@@ -2,6 +2,7 @@ package memoize
 
 import (
 	"context"
+	"fmt"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"sync"
@@ -17,12 +18,12 @@ func TestNewPromise(t *testing.T) {
 	}
 
 	// All calls to Get on the same promise return the same result.
-	p1 := newPromise("debug", context.Background(), f)
+	p1 := newPromise("executionKeyType", context.Background(), f)
 	expectGet(t, p1, 1, assert.AnError)
 	expectGet(t, p1, 1, assert.AnError)
 
 	// A new promise calls the function again.
-	p2 := newPromise("debug", context.Background(), f)
+	p2 := newPromise("executionKeyType", context.Background(), f)
 	expectGet(t, p2, 2, assert.AnError)
 	expectGet(t, p2, 2, assert.AnError)
 
@@ -35,7 +36,7 @@ func TestPromise_Get(t *testing.T) {
 
 	evaled := 0
 
-	p := c.promise(
+	p, _ := c.promise(
 		"key", func(context.Context) (interface{}, error) {
 			evaled++
 			return "res", assert.AnError
@@ -53,7 +54,7 @@ func TestPromise_Get(t *testing.T) {
 func TestPromise_Panic(t *testing.T) {
 	var c cache
 
-	p := c.promise(
+	p, _ := c.promise(
 		"key", func(context.Context) (interface{}, error) {
 			panic("some error")
 		},
@@ -61,9 +62,9 @@ func TestPromise_Panic(t *testing.T) {
 
 	assert.NotPanics(
 		t, func() {
-			result, err := p.get(context.Background())
-			assert.Equal(t, nil, result)
-			assert.True(t, errors.Is(err, ErrPanicExecutingMemoizedFn))
+			outcome := p.get(context.Background())
+			assert.Equal(t, nil, outcome.Value)
+			assert.True(t, errors.Is(outcome.Err, ErrPanicExecutingMemoizedFn))
 		},
 	)
 }
@@ -71,22 +72,84 @@ func TestPromise_Panic(t *testing.T) {
 func expectGet(t *testing.T, h *promise, wantV interface{}, wantErr error) {
 	t.Helper()
 
-	gotV, gotErr := h.get(context.Background())
-	if gotV != wantV || gotErr != wantErr {
-		t.Fatalf("Get() = %v, %v, wanted %v, %v", gotV, gotErr, wantV, wantErr)
+	outcome := h.get(context.Background())
+	if outcome.Value != wantV || outcome.Err != wantErr {
+		t.Fatalf("Get() = %v, %v, wanted %v, %v", outcome.Value, outcome.Err, wantV, wantErr)
 	}
 }
 
 func TestCache_Destroy(t *testing.T) {
 	c := newCache(context.Background())
 
-	assert.Equal(t, (int32)(0), c.isDestroyed)
+	assert.False(t, c.isDestroyed)
 	assert.NotNil(t, c.promises)
 
 	c.destroy()
 
-	assert.Equal(t, (int32)(1), c.isDestroyed)
+	assert.True(t, c.isDestroyed)
 	assert.Nil(t, c.promises)
+}
+
+func TestCache_PopulateCache(t *testing.T) {
+	var c cache
+
+	assert.Empty(t, c.promises)
+
+	c.take(
+		map[interface{}]Outcome{
+			"key1": {
+				Value: 1,
+				Err:   assert.AnError,
+			},
+			"key2": {
+				Value: 2,
+				Err:   assert.AnError,
+			},
+		},
+	)
+
+	assert.Equal(t, 2, len(c.promises))
+
+	p1, _ := c.promise(
+		"key1", func(ctx context.Context) (interface{}, error) {
+			return 3, assert.AnError
+		},
+	)
+
+	// Should get back result from populated entries
+	outcome := p1.get(context.Background())
+	assert.Equal(t, 1, outcome.Value)
+	assert.Equal(t, assert.AnError, outcome.Err)
+
+	p2, _ := c.promise(
+		"key2", func(ctx context.Context) (interface{}, error) {
+			return 3, assert.AnError
+		},
+	)
+
+	// Should get back result from populated entries
+	outcome = p2.get(context.Background())
+	assert.Equal(t, 2, outcome.Value)
+	assert.Equal(t, assert.AnError, outcome.Err)
+
+	c.destroy()
+
+	assert.Empty(t, c.promises)
+
+	c.take(
+		map[interface{}]Outcome{
+			"key1": {
+				Value: 1,
+				Err:   assert.AnError,
+			},
+			"key2": {
+				Value: 2,
+				Err:   assert.AnError,
+			},
+		},
+	)
+
+	assert.Empty(t, c.promises, "populating a destroyed cache must be a no-op")
 }
 
 func TestCache_Execute(t *testing.T) {
@@ -113,10 +176,11 @@ func TestCache_Execute(t *testing.T) {
 					go func() {
 						defer wg.Done()
 
-						result, err, isMemoized := c.execute(context.Background(), nil, memoizedFn)
-						assert.Equal(t, 1, result)
-						assert.Equal(t, assert.AnError, err)
-						assert.False(t, isMemoized)
+						outcome, extra := c.execute(context.Background(), nil, memoizedFn)
+						assert.Equal(t, 1, outcome.Value)
+						assert.Equal(t, assert.AnError, outcome.Err)
+						assert.False(t, extra.IsMemoized)
+						assert.True(t, extra.IsExecuted)
 					}()
 				}
 
@@ -139,10 +203,11 @@ func TestCache_Execute(t *testing.T) {
 					go func() {
 						defer wg.Done()
 
-						result, err, isMemoized := c.execute(context.Background(), "executionKey", nil)
-						assert.Equal(t, nil, result)
-						assert.Equal(t, ErrMemoizedFnCannotBeNil, err)
-						assert.False(t, isMemoized)
+						outcome, extra := c.execute(context.Background(), "executionKey", nil)
+						assert.Equal(t, nil, outcome.Value)
+						assert.Equal(t, ErrMemoizedFnCannotBeNil, outcome.Err)
+						assert.False(t, extra.IsMemoized)
+						assert.False(t, extra.IsExecuted)
 					}()
 				}
 
@@ -171,10 +236,11 @@ func TestCache_Execute(t *testing.T) {
 					go func() {
 						defer wg.Done()
 
-						result, err, isMemoized := c.execute(context.Background(), "executionKey", memoizedFn)
-						assert.Equal(t, nil, result)
-						assert.Equal(t, ErrCacheAlreadyDestroyed, err)
-						assert.False(t, isMemoized)
+						outcome, extra := c.execute(context.Background(), "executionKey", memoizedFn)
+						assert.Equal(t, nil, outcome.Value)
+						assert.Equal(t, ErrCacheAlreadyDestroyed, outcome.Err)
+						assert.False(t, extra.IsMemoized)
+						assert.False(t, extra.IsExecuted)
 					}()
 				}
 
@@ -202,10 +268,11 @@ func TestCache_Execute(t *testing.T) {
 					go func() {
 						defer wg.Done()
 
-						result, err, isMemoized := c.execute(context.Background(), "executionKey", memoizedFn)
-						assert.Equal(t, 1, result)
-						assert.Equal(t, assert.AnError, err)
-						assert.True(t, isMemoized)
+						outcome, extra := c.execute(context.Background(), "executionKey", memoizedFn)
+						assert.Equal(t, 1, outcome.Value)
+						assert.Equal(t, assert.AnError, outcome.Err)
+						assert.True(t, extra.IsMemoized)
+						assert.True(t, extra.IsExecuted)
 					}()
 				}
 
@@ -215,10 +282,11 @@ func TestCache_Execute(t *testing.T) {
 
 				c.destroy()
 
-				result, err, isMemoized := c.execute(context.Background(), "executionKey", memoizedFn)
-				assert.Equal(t, nil, result)
-				assert.Equal(t, ErrCacheAlreadyDestroyed, err)
-				assert.False(t, isMemoized)
+				outcome, extra := c.execute(context.Background(), "executionKey", memoizedFn)
+				assert.Equal(t, nil, outcome.Value)
+				assert.Equal(t, ErrCacheAlreadyDestroyed, outcome.Err)
+				assert.False(t, extra.IsMemoized)
+				assert.False(t, extra.IsExecuted)
 			},
 		},
 	}
@@ -228,4 +296,36 @@ func TestCache_Execute(t *testing.T) {
 
 		t.Run(sc.desc, sc.test)
 	}
+}
+
+func TestCache_FindOutcomes(t *testing.T) {
+	var c cache
+
+	for i := 0; i < 100; i++ {
+		i := i
+		c.promise(
+			fmt.Sprintf("key%v", i), func(ctx context.Context) (interface{}, error) {
+				return i, assert.AnError
+			},
+		)
+	}
+
+	outcomes := c.findOutcomes(context.Background(), "key")
+	assert.Equal(t, 100, len(outcomes))
+
+	for i := 0; i < 100; i++ {
+		expected := Outcome{
+			Value: i,
+			Err:   assert.AnError,
+		}
+
+		outcome, ok := outcomes[fmt.Sprintf("key%v", i)]
+		assert.True(t, ok)
+		assert.Equal(t, expected, outcome)
+	}
+
+	c.destroy()
+
+	outcomes = c.findOutcomes(context.Background(), "key")
+	assert.Equal(t, 0, len(outcomes), "no outcomes should come from a destroyed cache")
 }
