@@ -68,11 +68,11 @@ a need to memoize function calls, you just need to execute those functions using
 // for the result from the memoizedFn. However, the memoizedFn will
 // still proceed till completion unless the root context given to
 // WithCache was cancelled.
-func Execute(
+func Execute[K comparable, V any](
     ctx context.Context,
-    executionKey interface{},
-    memoizedFn func(context.Context) (interface{}, error),
-) (Outcome, Extra)
+    executionKey K,
+    memoizedFn func(context.Context) (V, error),
+) (TypedOutcome[V], Extra)
 ```
 
 Toward the end of your implementation, if there's a need to find all memoized outcomes related to a particular execution
@@ -87,5 +87,5 @@ take advantage of the `FindOutcomes` function.
 //
 // Note: this function can only return all memoized Outcome if the given
 // context has been initialized using WithCache.
-func FindOutcomes(ctx context.Context, executionKey interface{}) map[interface{}]Outcome
+func FindOutcomes[K comparable, V any](ctx context.Context, executionKey K) map[K]TypedOutcome[V]
 ```
