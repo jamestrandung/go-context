@@ -13,3 +13,9 @@ func IsComparable(v interface{}) bool {
 func IsSameType(v1 interface{}, v2 interface{}) bool {
 	return v1 != nil && v2 != nil && reflect.TypeOf(v1) == reflect.TypeOf(v2)
 }
+
+// IsCastable returns whether v can be casted to type T.
+func IsCastable[T any](v interface{}) bool {
+	_, ok := v.(T)
+	return ok
+}

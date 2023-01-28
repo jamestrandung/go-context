@@ -73,13 +73,22 @@ func PopulateCache(ctx context.Context, entries map[interface{}]Outcome) {
 // for the result from the memoizedFn. However, the memoizedFn will
 // still proceed till completion unless the root context given to
 // WithCache was cancelled.
-func Execute(
+func Execute[K comparable, V any](
 	ctx context.Context,
-	executionKey interface{},
-	memoizedFn func(context.Context) (interface{}, error),
-) (Outcome, Extra) {
+	executionKey K,
+	memoizedFn func(context.Context) (V, error),
+) (TypedOutcome[V], Extra) {
+	var convertedFn func(context.Context) (interface{}, error)
+	if memoizedFn != nil {
+		convertedFn = func(ctx context.Context) (interface{}, error) {
+			return memoizedFn(ctx)
+		}
+	}
+
 	c := extractCache(ctx)
-	return c.execute(ctx, executionKey, memoizedFn)
+
+	outcome, extra := c.execute(ctx, executionKey, convertedFn)
+	return newTypedOutcome[V](outcome), extra
 }
 
 // FindOutcomes returns all Outcome that were memoized under the given
@@ -89,7 +98,36 @@ func Execute(
 //
 // Note: this function can only return all memoized Outcome if the given
 // context has been initialized using WithCache.
-func FindOutcomes(ctx context.Context, executionKey interface{}) map[interface{}]Outcome {
+func FindOutcomes[K comparable, V any](ctx context.Context, executionKey K) map[K]TypedOutcome[V] {
 	c := extractCache(ctx)
-	return c.findOutcomes(ctx, executionKey)
+
+	outcomes := c.findOutcomes(ctx, executionKey)
+
+	result := make(map[K]TypedOutcome[V], len(outcomes))
+	for k, o := range outcomes {
+		result[k.(K)] = newTypedOutcome[V](o)
+	}
+
+	return result
+}
+
+// TypedOutcome ...
+type TypedOutcome[V any] struct {
+	Value V
+	Err   error
+}
+
+func newTypedOutcome[V any](o Outcome) TypedOutcome[V] {
+	if casted, ok := o.Value.(V); ok {
+		return TypedOutcome[V]{
+			Value: casted,
+			Err:   o.Err,
+		}
+	}
+
+	var temp V
+	return TypedOutcome[V]{
+		Value: temp,
+		Err:   o.Err,
+	}
 }
