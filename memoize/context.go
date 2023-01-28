@@ -101,14 +101,24 @@ func Execute[K comparable, V any](
 func FindOutcomes[K comparable, V any](ctx context.Context, executionKey K) map[K]TypedOutcome[V] {
 	c := extractCache(ctx)
 
-	outcomes := c.findOutcomes(ctx, executionKey)
-
-	result := make(map[K]TypedOutcome[V], len(outcomes))
-	for k, o := range outcomes {
-		result[k.(K)] = newTypedOutcome[V](o)
+	promises := c.findPromises(executionKey)
+	if promises == nil {
+		return nil
 	}
 
-	return result
+	m := make(map[K]TypedOutcome[V], len(promises))
+	for key, p := range promises {
+		// Check if context was cancelled while we were waiting
+		// for the previous promise.
+		if ctx.Err() != nil {
+			return nil
+		}
+
+		// Wait for the result
+		m[key.(K)] = newTypedOutcome[V](p.get(ctx))
+	}
+
+	return m
 }
 
 // TypedOutcome ...

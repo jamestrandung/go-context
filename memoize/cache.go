@@ -20,11 +20,9 @@ type iCache interface {
 		executionKey interface{},
 		memoizedFn Function,
 	) (Outcome, Extra)
-	// findOutcomes returns all Outcome that were memoized under the given
-	// executionKey type at the time findOutcomes was called. If a promise
-	// related to this executionKey type is still pending, the function
-	// will block and wait for it to complete to get its Outcome.
-	findOutcomes(ctx context.Context, executionKey interface{}) map[interface{}]Outcome
+	// findPromises returns all promise that were memoized under the given
+	// executionKey type at the time findPromises was called.
+	findPromises(executionKey interface{}) map[interface{}]*promise
 }
 
 type noMemoizeCache struct{}
@@ -58,6 +56,6 @@ func (c noMemoizeCache) execute(
 		}
 }
 
-func (c noMemoizeCache) findOutcomes(ctx context.Context, executionKey interface{}) map[interface{}]Outcome {
+func (c noMemoizeCache) findPromises(executionKey interface{}) map[interface{}]*promise {
 	return nil
 }

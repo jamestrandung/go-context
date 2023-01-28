@@ -298,7 +298,7 @@ func TestCache_Execute(t *testing.T) {
 	}
 }
 
-func TestCache_FindOutcomes(t *testing.T) {
+func TestCache_FindPromises(t *testing.T) {
 	var c cache
 
 	for i := 0; i < 100; i++ {
@@ -310,22 +310,17 @@ func TestCache_FindOutcomes(t *testing.T) {
 		)
 	}
 
-	outcomes := c.findOutcomes(context.Background(), "key")
-	assert.Equal(t, 100, len(outcomes))
+	promises := c.findPromises("key")
+	assert.Equal(t, 100, len(promises))
 
 	for i := 0; i < 100; i++ {
-		expected := Outcome{
-			Value: i,
-			Err:   assert.AnError,
-		}
-
-		outcome, ok := outcomes[fmt.Sprintf("key%v", i)]
+		p, ok := promises[fmt.Sprintf("key%v", i)]
 		assert.True(t, ok)
-		assert.Equal(t, expected, outcome)
+		assert.Equal(t, "string", p.executionKeyType)
 	}
 
 	c.destroy()
 
-	outcomes = c.findOutcomes(context.Background(), "key")
-	assert.Equal(t, 0, len(outcomes), "no outcomes should come from a destroyed cache")
+	promises = c.findPromises("key")
+	assert.Equal(t, 0, len(promises), "no promises should come from a destroyed cache")
 }
