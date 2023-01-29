@@ -6,6 +6,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.4] - 2023-01-28
+- Add generic type to memoize and cyclic features
+
 ## [1.0.3] - 2022-11-16
 - Update memoize method signature to return more information with fewer outputs.
 - Added a feature to pre-populate the cache for request-level memoization.
