@@ -310,6 +310,12 @@ func TestCache_FindPromises(t *testing.T) {
 		)
 	}
 
+	intPromise, _ := c.promise(
+		101, func(ctx context.Context) (interface{}, error) {
+			return 101, assert.AnError
+		},
+	)
+
 	promises := c.findPromises("key")
 	assert.Equal(t, 100, len(promises))
 
@@ -318,6 +324,20 @@ func TestCache_FindPromises(t *testing.T) {
 		assert.True(t, ok)
 		assert.Equal(t, "string", p.executionKeyType)
 	}
+
+	// should get ALL promises when key is `nil`
+	promises = c.findPromises(nil)
+	assert.Equal(t, 101, len(promises))
+
+	for i := 0; i < 100; i++ {
+		p, ok := promises[fmt.Sprintf("key%v", i)]
+		assert.True(t, ok)
+		assert.Equal(t, "string", p.executionKeyType)
+	}
+
+	p, ok := promises[101]
+	assert.True(t, ok)
+	assert.Equal(t, intPromise, p)
 
 	c.destroy()
 

@@ -22,6 +22,8 @@ type iCache interface {
 	) (Outcome, Extra)
 	// findPromises returns all promise that were memoized under the given
 	// executionKey type at the time findPromises was called.
+	//
+	// Note: if executionKey is nil, all promises will be returned.
 	findPromises(executionKey interface{}) map[interface{}]*promise
 }
 

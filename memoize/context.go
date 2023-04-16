@@ -141,3 +141,13 @@ func newTypedOutcome[V any](o Outcome) TypedOutcome[V] {
 		Err:   o.Err,
 	}
 }
+
+// ResultOrDefault returns the final result if there's no error or the default
+// result if there's an error.
+func (o TypedOutcome[V]) ResultOrDefault(defaultResult V) V {
+	if o.Err != nil {
+		return defaultResult
+	}
+
+	return o.Value
+}
