@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [1.0.5] - 2023-04-16
 - Add a helper method to return default on error for memoized operations.
 - Allow extracting all outcomes via `nil` key.
 - Capture stacktrace as a string when memoized fn panics.
