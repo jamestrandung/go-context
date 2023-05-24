@@ -22,7 +22,7 @@ func TestExtractCache(t *testing.T) {
 	ctx := context.Background()
 
 	c := extractCache(ctx)
-	assert.Equal(t, noMemoizeCache{}, c)
+	assert.Equal(t, &noMemoizeCache{}, c)
 
 	ctxWithCache, destroyFn := WithCache(ctx)
 	defer destroyFn()

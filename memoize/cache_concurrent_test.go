@@ -3,97 +3,34 @@ package memoize
 import (
 	"context"
 	"fmt"
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"sync"
 	"sync/atomic"
 	"testing"
 )
 
-func TestNewPromise(t *testing.T) {
-	calls := 0
-	f := func(context.Context) (interface{}, error) {
-		calls++
-		return calls, assert.AnError
+func TestConcurrentCache_Destroy(t *testing.T) {
+	c := newConcurrentCache(context.Background(), 10)
+
+	for _, shard := range c {
+		assert.False(t, shard.isDestroyed)
+		assert.NotNil(t, shard.promises)
 	}
-
-	// All calls to Get on the same promise return the same result.
-	p1 := newPromise("executionKeyType", context.Background(), f)
-	expectGet(t, p1, 1, assert.AnError)
-	expectGet(t, p1, 1, assert.AnError)
-
-	// A new promise calls the function again.
-	p2 := newPromise("executionKeyType", context.Background(), f)
-	expectGet(t, p2, 2, assert.AnError)
-	expectGet(t, p2, 2, assert.AnError)
-
-	// The original promise is unchanged.
-	expectGet(t, p1, 1, assert.AnError)
-}
-
-func TestPromise_Get(t *testing.T) {
-	var c cache
-
-	evaled := 0
-
-	p, _ := c.promise(
-		"key", func(context.Context) (interface{}, error) {
-			evaled++
-			return "res", assert.AnError
-		},
-	)
-
-	expectGet(t, p, "res", assert.AnError)
-	expectGet(t, p, "res", assert.AnError)
-
-	if evaled != 1 {
-		t.Errorf("got %v calls to function, wanted 1", evaled)
-	}
-}
-
-func TestPromise_Panic(t *testing.T) {
-	var c cache
-
-	p, _ := c.promise(
-		"key", func(context.Context) (interface{}, error) {
-			panic("some error")
-		},
-	)
-
-	assert.NotPanics(
-		t, func() {
-			outcome := p.get(context.Background())
-			assert.Equal(t, nil, outcome.Value)
-			assert.True(t, errors.Is(outcome.Err, ErrPanicExecutingMemoizedFn))
-		},
-	)
-}
-
-func expectGet(t *testing.T, h *promise, wantV interface{}, wantErr error) {
-	t.Helper()
-
-	outcome := h.get(context.Background())
-	if outcome.Value != wantV || outcome.Err != wantErr {
-		t.Fatalf("Get() = %v, %v, wanted %v, %v", outcome.Value, outcome.Err, wantV, wantErr)
-	}
-}
-
-func TestCache_Destroy(t *testing.T) {
-	c := newCache(context.Background())
-
-	assert.False(t, c.isDestroyed)
-	assert.NotNil(t, c.promises)
 
 	c.destroy()
 
-	assert.True(t, c.isDestroyed)
-	assert.Nil(t, c.promises)
+	for _, shard := range c {
+		assert.True(t, shard.isDestroyed)
+		assert.Nil(t, shard.promises)
+	}
 }
 
-func TestCache_PopulateCache(t *testing.T) {
-	var c cache
+func TestConcurrentCache_PopulateCache(t *testing.T) {
+	c := newConcurrentCache(context.Background(), 10)
 
-	assert.Empty(t, c.promises)
+	for _, shard := range c {
+		assert.Empty(t, shard.promises)
+	}
 
 	c.take(
 		map[interface{}]Outcome{
@@ -108,33 +45,43 @@ func TestCache_PopulateCache(t *testing.T) {
 		},
 	)
 
-	assert.Equal(t, 2, len(c.promises))
+	promiseCount := 0
+	for _, shard := range c {
+		promiseCount += len(shard.promises)
+	}
 
-	p1, _ := c.promise(
-		"key1", func(ctx context.Context) (interface{}, error) {
+	assert.Equal(t, 2, promiseCount)
+
+	outcome, extra := c.execute(
+		context.Background(), "key1", func(ctx context.Context) (interface{}, error) {
 			return 3, assert.AnError
 		},
 	)
 
 	// Should get back result from populated entries
-	outcome := p1.get(context.Background())
 	assert.Equal(t, 1, outcome.Value)
 	assert.Equal(t, assert.AnError, outcome.Err)
+	assert.True(t, extra.IsMemoized)
+	assert.False(t, extra.IsExecuted)
 
-	p2, _ := c.promise(
-		"key2", func(ctx context.Context) (interface{}, error) {
+	outcome, extra = c.execute(
+		context.Background(), "key2", func(ctx context.Context) (interface{}, error) {
 			return 3, assert.AnError
 		},
 	)
 
 	// Should get back result from populated entries
-	outcome = p2.get(context.Background())
 	assert.Equal(t, 2, outcome.Value)
 	assert.Equal(t, assert.AnError, outcome.Err)
+	assert.True(t, extra.IsMemoized)
+	assert.False(t, extra.IsExecuted)
 
 	c.destroy()
 
-	assert.Empty(t, c.promises)
+	for _, shard := range c {
+		assert.True(t, shard.isDestroyed)
+		assert.Nil(t, shard.promises)
+	}
 
 	c.take(
 		map[interface{}]Outcome{
@@ -149,10 +96,12 @@ func TestCache_PopulateCache(t *testing.T) {
 		},
 	)
 
-	assert.Empty(t, c.promises, "populating a destroyed cache must be a no-op")
+	for _, shard := range c {
+		assert.Empty(t, shard.promises, "populating a destroyed cache must be a no-op")
+	}
 }
 
-func TestCache_Execute(t *testing.T) {
+func TestConcurrentCache_Execute(t *testing.T) {
 	scenarios := []struct {
 		desc string
 		test func(t *testing.T)
@@ -167,7 +116,7 @@ func TestCache_Execute(t *testing.T) {
 					return 1, assert.AnError
 				}
 
-				c := newCache(context.Background())
+				c := newConcurrentCache(context.Background(), 10)
 
 				var wg sync.WaitGroup
 				for i := 0; i < 100; i++ {
@@ -194,7 +143,7 @@ func TestCache_Execute(t *testing.T) {
 			test: func(t *testing.T) {
 				var evaled int32 = 0
 
-				c := newCache(context.Background())
+				c := newConcurrentCache(context.Background(), 10)
 
 				var wg sync.WaitGroup
 				for i := 0; i < 100; i++ {
@@ -226,7 +175,7 @@ func TestCache_Execute(t *testing.T) {
 					return 1, assert.AnError
 				}
 
-				c := newCache(context.Background())
+				c := newConcurrentCache(context.Background(), 10)
 				c.destroy()
 
 				var wg sync.WaitGroup
@@ -259,7 +208,7 @@ func TestCache_Execute(t *testing.T) {
 					return 1, assert.AnError
 				}
 
-				c := newCache(context.Background())
+				c := newConcurrentCache(context.Background(), 10)
 
 				var wg sync.WaitGroup
 				for i := 0; i < 100; i++ {
@@ -298,20 +247,20 @@ func TestCache_Execute(t *testing.T) {
 	}
 }
 
-func TestCache_FindPromises(t *testing.T) {
-	var c cache
+func TestConcurrentCache_FindPromises(t *testing.T) {
+	c := newConcurrentCache(context.Background(), 10)
 
 	for i := 0; i < 100; i++ {
 		i := i
-		c.promise(
-			fmt.Sprintf("key%v", i), func(ctx context.Context) (interface{}, error) {
+		c.execute(
+			context.Background(), fmt.Sprintf("key%v", i), func(ctx context.Context) (interface{}, error) {
 				return i, assert.AnError
 			},
 		)
 	}
 
-	intPromise, _ := c.promise(
-		101, func(ctx context.Context) (interface{}, error) {
+	c.execute(
+		context.Background(), 101, func(ctx context.Context) (interface{}, error) {
 			return 101, assert.AnError
 		},
 	)
@@ -337,7 +286,7 @@ func TestCache_FindPromises(t *testing.T) {
 
 	p, ok := promises[101]
 	assert.True(t, ok)
-	assert.Equal(t, intPromise, p)
+	assert.Equal(t, "int", p.executionKeyType)
 
 	c.destroy()
 

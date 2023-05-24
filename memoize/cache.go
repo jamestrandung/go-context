@@ -2,10 +2,14 @@ package memoize
 
 import (
 	"context"
+	"sync/atomic"
 )
 
 // iCache represents a cache for memoized functions.
 type iCache interface {
+	// destroy clears existing items in this cache and mark it as destroyed.
+	// Subsequent calls to execute will return ErrCacheAlreadyDestroyed.
+	destroy()
 	// take will put the given entries into this cache. The key of such
 	// entries should be the executionKey that would be used to call
 	// execute. The value should be the Outcome that you want to map to
@@ -27,17 +31,33 @@ type iCache interface {
 	findPromises(executionKey interface{}) map[interface{}]*promise
 }
 
-type noMemoizeCache struct{}
+type noMemoizeCache struct {
+	isDestroyed int64
+}
 
-func (c noMemoizeCache) take(entries map[interface{}]Outcome) {
+func (c *noMemoizeCache) destroy() {
+	atomic.StoreInt64(&c.isDestroyed, 1)
+}
+
+func (c *noMemoizeCache) take(entries map[interface{}]Outcome) {
 	// do nothing
 }
 
-func (c noMemoizeCache) execute(
+func (c *noMemoizeCache) execute(
 	ctx context.Context,
 	executionKey interface{},
 	memoizedFn Function,
 ) (Outcome, Extra) {
+	if atomic.LoadInt64(&c.isDestroyed) == 1 {
+		return Outcome{
+				Value: nil,
+				Err:   ErrCacheAlreadyDestroyed,
+			}, Extra{
+				IsMemoized: false,
+				IsExecuted: false,
+			}
+	}
+
 	if memoizedFn == nil {
 		return Outcome{
 				Value: nil,
@@ -58,6 +78,6 @@ func (c noMemoizeCache) execute(
 		}
 }
 
-func (c noMemoizeCache) findPromises(executionKey interface{}) map[interface{}]*promise {
+func (c *noMemoizeCache) findPromises(executionKey interface{}) map[interface{}]*promise {
 	return nil
 }

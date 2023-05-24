@@ -31,6 +31,33 @@ func WithCache(ctx context.Context) (context.Context, DestroyFn) {
 	return context.WithValue(ctx, memoizeStoreKey, c), c.destroy
 }
 
+// WithConcurrentCache returns a new context.Context that holds a reference
+// to a cache for memoized functions. This is meant to be a request-level
+// cache that will automatically get garbage-collected at the end of an API
+// request when the context itself is garbage-collected.
+//
+// WithConcurrentCache must be called at the start of an API request handling
+// before being any memoized functions get executed in child goroutines.
+//
+// The given context will be used as the root context of this cache. If it is
+// cancelled, all pending memoized executions will be abandoned. In contrast,
+// the context given to Execute won't affect pending executions. Child routines
+// can cancel the context given to Execute to stop waiting for the result from
+// the memoized function, which will still proceed till completion.
+//
+// Note: the return DestroyFn must be deferred to minimize memory leaks.
+func WithConcurrentCache(ctx context.Context, concurrencyLevel int) (context.Context, DestroyFn) {
+	c := func() iCache {
+		if concurrencyLevel == 1 {
+			return newCache(ctx)
+		}
+
+		return newConcurrentCache(ctx, concurrencyLevel)
+	}()
+
+	return context.WithValue(ctx, memoizeStoreKey, c), c.destroy
+}
+
 // extractCache looks for the iCache stored in this context and
 // returns it. If it doesn't exist, a no-op cache will be returned
 // instead. All functions executed via this no-op cache will not
@@ -41,7 +68,7 @@ func extractCache(ctx context.Context) iCache {
 		return c
 	}
 
-	return noMemoizeCache{}
+	return &noMemoizeCache{}
 }
 
 // PopulateCache will put the given entries into this cache. The key

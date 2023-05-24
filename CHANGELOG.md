@@ -6,6 +6,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.6] - 2023-05-24
+- Add concurrent memoize cache.
+
 ## [1.0.5] - 2023-04-16
 - Add a helper method to return default on error for memoized operations.
 - Allow extracting all outcomes via `nil` key.
