@@ -6,6 +6,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.7] - 2023-05-25
+- Add more utility functions for memoize.
+
 ## [1.0.6] - 2023-05-24
 - Add concurrent memoize cache.
 
