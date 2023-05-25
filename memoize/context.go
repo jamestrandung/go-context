@@ -71,6 +71,29 @@ func extractCache(ctx context.Context) iCache {
 	return &noMemoizeCache{}
 }
 
+// PopulateCacheWithTypedOutcomes will put the given entries into this cache. The key
+// of such entries should be the executionKey that would be used to
+// call execute. The value should be the Outcome that you want to map
+// to this executionKey.
+//
+// Note: the given entries can only be populated in the cache if the
+// input context has been initialized using WithCache.
+func PopulateCacheWithTypedOutcomes[K comparable, V any](ctx context.Context, entries map[K]TypedOutcome[V]) {
+	if len(entries) == 0 {
+		return
+	}
+
+	m := make(map[interface{}]Outcome, len(entries))
+	for k, v := range entries {
+		m[k] = Outcome{
+			Value: v.Value,
+			Err:   v.Err,
+		}
+	}
+
+	PopulateCache(ctx, m)
+}
+
 // PopulateCache will put the given entries into this cache. The key
 // of such entries should be the executionKey that would be used to
 // call execute. The value should be the Outcome that you want to map
@@ -79,6 +102,10 @@ func extractCache(ctx context.Context) iCache {
 // Note: the given entries can only be populated in the cache if the
 // input context has been initialized using WithCache.
 func PopulateCache(ctx context.Context, entries map[interface{}]Outcome) {
+	if len(entries) == 0 {
+		return
+	}
+
 	c := extractCache(ctx)
 	c.take(entries)
 }
@@ -119,9 +146,9 @@ func Execute[K comparable, V any](
 }
 
 // FindOutcomes returns all Outcome that were memoized under the given
-// executionKey type at the time findOutcomes was called. If a promise
+// executionKey type at the time FindOutcomes was called. If a promise
 // related to this executionKey type is still pending, the function
-// will block and wait for it to complete to get its Outcome.
+// will block & wait for it to complete to get its Outcome.
 //
 // Note: this function can only return all memoized Outcome if the given
 // context has been initialized using WithCache.
@@ -143,6 +170,35 @@ func FindOutcomes[K comparable, V any](ctx context.Context, executionKey K) map[
 
 		// Wait for the result
 		m[key.(K)] = newTypedOutcome[V](p.get(ctx))
+	}
+
+	return m
+}
+
+// FindAllOutcomes returns all Outcome that were memoized in this cache
+// at the time findOutcomes was called. If a promise is still pending,
+// the function will block & wait for it to complete to get its Outcome.
+//
+// Note: this function can only return all memoized Outcome if the given
+// context has been initialized using WithCache.
+func FindAllOutcomes(ctx context.Context) map[interface{}]Outcome {
+	c := extractCache(ctx)
+
+	promises := c.findPromises(nil)
+	if promises == nil {
+		return nil
+	}
+
+	m := make(map[interface{}]Outcome, len(promises))
+	for key, p := range promises {
+		// Check if context was cancelled while we were waiting
+		// for the previous promise.
+		if ctx.Err() != nil {
+			return nil
+		}
+
+		// Wait for the result
+		m[key] = p.get(ctx)
 	}
 
 	return m
