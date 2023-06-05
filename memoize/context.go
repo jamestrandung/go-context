@@ -211,16 +211,16 @@ type TypedOutcome[V any] struct {
 }
 
 func newTypedOutcome[V any](o Outcome) TypedOutcome[V] {
-	if casted, ok := o.Value.(V); ok {
+	if o.Value == nil {
 		return TypedOutcome[V]{
-			Value: casted,
-			Err:   o.Err,
+			Err: o.Err,
 		}
 	}
 
-	var temp V
+	casted, _ := o.Value.(V)
+
 	return TypedOutcome[V]{
-		Value: temp,
+		Value: casted,
 		Err:   o.Err,
 	}
 }
