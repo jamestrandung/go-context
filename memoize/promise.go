@@ -3,9 +3,10 @@ package memoize
 import (
 	"context"
 	"fmt"
-	"github.com/jamestrandung/go-context/cext"
 	"runtime/trace"
 	"sync/atomic"
+
+	"github.com/jamestrandung/go-context/cext"
 )
 
 // Function is the type of function that can be memoized.
@@ -32,19 +33,25 @@ type Extra struct {
 	IsExecuted bool
 }
 
+// State represents the state enumeration for a promise.
+type State byte
+
+// Various states.
+const (
+	IsCreated   State = iota // IsCreated represents a newly created promise
+	IsExecuted               // IsExecuted represents a promise which was executed
+	IsPopulated              // IsPopulated represents a completed promise carrying populated outcome
+)
+
 // A promise represents the future result of a call to a function.
 type promise struct {
 	executionKeyType string
 
 	// the rootCtx that was used to initialize a cache and would provide
-	// the cancelling signal for our execution
+	// the cancelling signal for our execution.
 	rootCtx context.Context
-	// executed is set when execution starts so that the memoized function
-	// does not get executed more than once.
-	executed int32
-	// finished is set when execution completes so that future callers can
-	// use outcome immediately instead of waiting on done.
-	finished bool
+	// state is the current memoize.State of this promise.
+	state int32
 	// done is closed when execution completes to unblock concurrent waiters.
 	done chan struct{}
 	// the function that will be used to populate the outcome.
@@ -74,17 +81,21 @@ func newPromise(executionKeyType string, rootCtx context.Context, function Funct
 // completedPromise returns a promise that has already completed with
 // the given Outcome.
 func completedPromise(debug string, outcome Outcome) *promise {
+	done := make(chan struct{})
+	close(done)
+
 	return &promise{
 		executionKeyType: debug,
-		finished:         true,
+		state:            int32(IsPopulated),
+		done:             done,
 		outcome:          outcome,
 	}
 }
 
-// isExecuted returns whether this promise has resolved and if it was
-// actually executed or the result was pre-populated.
+// isExecuted returns whether this promise was actually
+// executed or the result was pre-populated.
 func (p *promise) isExecuted() bool {
-	return p.finished && p.executed == 1
+	return p.state == int32(IsExecuted)
 }
 
 // get returns the value associated with a promise.
@@ -102,12 +113,8 @@ func (p *promise) get(ctx context.Context) Outcome {
 		}
 	}
 
-	if !p.finished && atomic.CompareAndSwapInt32(&p.executed, 0, 1) {
+	if p.changeState(IsCreated, IsExecuted) {
 		return p.run(ctx)
-	}
-
-	if p.finished {
-		return p.outcome
 	}
 
 	return p.wait(ctx)
@@ -135,7 +142,6 @@ func (p *promise) run(ctx context.Context) Outcome {
 					Err:   err,
 				}
 				p.function = nil // aid GC
-				p.finished = true
 				close(p.done)
 			},
 		)
@@ -144,7 +150,7 @@ func (p *promise) run(ctx context.Context) Outcome {
 	return p.wait(ctx)
 }
 
-// wait waits for the value to be computed, or ctx to be cancelled. p.mu must be locked.
+// wait waits for the value to be computed, or ctx to be cancelled.
 func (p *promise) wait(ctx context.Context) Outcome {
 	select {
 	case <-p.done:
@@ -156,4 +162,8 @@ func (p *promise) wait(ctx context.Context) Outcome {
 			Err:   ctx.Err(),
 		}
 	}
+}
+
+func (p *promise) changeState(from, to State) bool {
+	return atomic.CompareAndSwapInt32(&p.state, int32(from), int32(to))
 }

@@ -3,11 +3,12 @@ package memoize
 import (
 	"context"
 	"fmt"
-	"github.com/jamestrandung/go-context/helper"
-	"github.com/pkg/errors"
 	"reflect"
 	"runtime/debug"
 	"sync"
+
+	"github.com/jamestrandung/go-context/helper"
+	"github.com/pkg/errors"
 )
 
 // A cache maps arbitrary keys to promises.
