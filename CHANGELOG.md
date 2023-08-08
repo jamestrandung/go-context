@@ -6,6 +6,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.9] - 2023-08-08
+- Fix a race condition in the promise implementation of memoize.
+
 ## [1.0.8] - 2023-06-06
 - Use longer implementation for newTypedOutcome to avoid some issues.
 
